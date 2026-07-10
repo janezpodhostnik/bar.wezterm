@@ -42,33 +42,30 @@ local function build_tab_bar_colors(scheme)
 end
 
 local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
-local plugin_dir = wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
 
----checks if the plugin directory exists
----@param path string
----@return boolean
-local function directory_exists(path)
-  local success = pcall(wez.read_dir, plugin_dir .. path)
-  return success
-end
-
----returns the name of the package, used when requiring modules
+---find the plugin directory that contains this plugin's modules.
+---this supports forks and file:// plugins, not just the original GitHub URL.
 ---@return string
-local function get_require_path()
-  local path = "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDswezterm"
-  local path_trailing_slash = "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDsweztermsZs"
-  return directory_exists(path_trailing_slash) and path_trailing_slash or path
+local function get_plugin_path()
+  for _, plugin in ipairs(wez.plugin.list()) do
+    local memory_path = plugin.plugin_dir .. separator .. "plugin" .. separator .. "bar" .. separator .. "memory.lua"
+    local f = io.open(memory_path, "r")
+    if f then
+      f:close()
+      return plugin.plugin_dir
+    end
+  end
+
+  -- fallback: first plugin directory
+  local first = wez.plugin.list()[1]
+  if first then
+    return first.plugin_dir
+  end
+
+  return ""
 end
 
-package.path = package.path
-  .. ";"
-  .. plugin_dir
-  .. separator
-  .. get_require_path()
-  .. separator
-  .. "plugin"
-  .. separator
-  .. "?.lua"
+package.path = package.path .. ";" .. get_plugin_path() .. separator .. "plugin" .. separator .. "?.lua"
 
 local utilities = require "bar.utilities"
 local config = require "bar.config"
@@ -76,6 +73,8 @@ local tabs = require "bar.tabs"
 local user = require "bar.user"
 local spotify = require "bar.spotify"
 local paths = require "bar.paths"
+local memory = require "bar.memory"
+local cpu = require "bar.cpu"
 
 ---conforming to https://github.com/wez/wezterm/commit/e4ae8a844d8feaa43e1de34c5cc8b4f07ce525dd
 ---@param c table: wezterm config object
@@ -193,6 +192,18 @@ wez.on("update-status", function(window, pane)
   }
 
   local callbacks = {
+    {
+      name = "memory",
+      func = function()
+        return memory.get_status(options.modules.memory.throttle, options.modules.memory.max_width)
+      end,
+    },
+    {
+      name = "cpu",
+      func = function()
+        return cpu.get_status(options.modules.cpu.throttle, options.modules.cpu.max_width)
+      end,
+    },
     {
       name = "spotify",
       func = function()

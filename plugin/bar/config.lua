@@ -24,6 +24,10 @@ local M = {}
 ---@field icon string
 ---@field color number
 
+---@class option.histogram : option.module
+---@field throttle number
+---@field max_width number
+
 ---@class option.spotify : option.module
 ---@field max_width number
 ---@field throttle number
@@ -42,6 +46,8 @@ local M = {}
 ---@field cwd option.module
 ---@field ssh option.module
 ---@field spotify option.spotify
+---@field memory option.histogram
+---@field cpu option.histogram
 
 ---@class option.padding.tabs
 ---@field left number
@@ -134,6 +140,20 @@ M.options = {
       color = 3,
       max_width = 64,
       throttle = 15,
+    },
+    memory = {
+      enabled = false,
+      icon = wez.nerdfonts.md_memory,
+      color = 3,
+      throttle = 2,
+      max_width = 20,
+    },
+    cpu = {
+      enabled = false,
+      icon = wez.nerdfonts.md_cpu_64_bit,
+      color = 4,
+      throttle = 2,
+      max_width = 20,
     },
   },
 }

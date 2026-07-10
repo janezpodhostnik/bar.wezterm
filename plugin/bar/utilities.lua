@@ -88,4 +88,33 @@ H._constant_width = function(prev, next)
   return H._space(next, first_half, second_half)
 end
 
+---map a percentage to a vertical Unicode block character
+---@param pct number
+---@return string
+H._block_for_pct = function(pct)
+  local blocks = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
+  local idx = math.max(1, math.min(#blocks, math.ceil(pct / (100 / #blocks))))
+  return blocks[idx]
+end
+
+---render a histogram from a history of percentages
+---@param history number[]
+---@param width integer
+---@return string
+H._render_histogram = function(history, width)
+  if type(history) ~= "table" or type(width) ~= "number" then
+    return ""
+  end
+
+  local bar = ""
+  local start = math.max(1, #history - width + 1)
+  for i = start, #history do
+    bar = bar .. H._block_for_pct(history[i])
+  end
+  while utf8.len(bar) < width do
+    bar = "▁" .. bar
+  end
+  return bar
+end
+
 return H
