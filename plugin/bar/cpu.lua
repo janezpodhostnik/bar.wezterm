@@ -155,7 +155,7 @@ M.get_status = function(throttle, max_width)
   end
 
   local bar = utilities._render_histogram(history, max_width)
-  local text = string.format("%.0f%% %s", used_pct, bar)
+  local text = string.format("%3d%% %s", math.floor(used_pct + 0.5), bar)
 
   cached_text = text
   last_update = os.time()

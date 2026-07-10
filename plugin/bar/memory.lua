@@ -104,13 +104,6 @@ local function get_memory_usage()
   return nil
 end
 
----format bytes in kB as GiB
----@param kb number
----@return number
-local function kb_to_gib(kb)
-  return kb / 1024 / 1024
-end
-
 ---get memory status string
 ---@param throttle integer
 ---@param max_width integer
@@ -131,10 +124,7 @@ M.get_status = function(throttle, max_width)
   end
 
   local bar = utilities._render_histogram(history, max_width)
-  local text = string.format("%.0f%% %s", used_pct, bar)
-  if total then
-    text = string.format("%s %.1f/%.1fG", text, kb_to_gib(used), kb_to_gib(total))
-  end
+  local text = string.format("%3d%% %s", math.floor(used_pct + 0.5), bar)
 
   cached_text = text
   last_update = os.time()
