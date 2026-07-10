@@ -121,6 +121,8 @@ local m1 = memory.get_status(5, 20)
 local m2 = memory.get_status(5, 20)
 test("memory returns non-empty string", #m1 > 0)
 test("memory returns cached value on second call", m1 == m2)
+test("memory output is fixed width (25 chars)", utf8.len(m1) == 25)
+test("memory output does not include used/total", not m1:find "G")
 
 local c1 = cpu.get_status(5, 20)
 test("cpu first Linux call returns empty (baseline)", c1 == "")
@@ -128,6 +130,7 @@ test("cpu first Linux call returns empty (baseline)", c1 == "")
 os.execute "sleep 0.1"
 local c2 = cpu.get_status(5, 20)
 test("cpu second call returns non-empty", #c2 > 0)
+test("cpu output is fixed width (25 chars)", utf8.len(c2) == 25)
 
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then

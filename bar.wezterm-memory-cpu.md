@@ -169,13 +169,13 @@ Throttle with `utilities._wait(throttle, last_update)` and render the bar with `
 
 ### Display format
 
-- **Memory:** `42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅ 6.2/15.7G`
-  - `%.0f%%`
+The percentage is rendered with fixed width so the histogram does not shift as the value changes.
+
+- **Memory:** ` 42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅`
+  - `%3d%%` (always 4 characters, e.g. `  5%`, ` 42%`, `100%`)
   - histogram (20 columns)
-  - `%.1f/%.1fG` (used/total in GiB)
-  - If total is unknown, fall back to `42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅`.
-- **CPU:** `87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█`
-  - `%.0f%%`
+- **CPU:** ` 87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█`
+  - `%3d%%` (always 4 characters)
   - histogram (20 columns)
 
 ---
@@ -316,7 +316,8 @@ This machine runs NixOS, so Linux paths are tested directly. macOS paths are ver
 
 3. **Live WezTerm test**
    - Load the plugin with `memory.enabled = true` and `cpu.enabled = true`.
-   - Confirm the right status shows a percentage and a 20-character bar, e.g. `42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅ 6.2/15.7G` for memory and `87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█` for CPU.
+   - Confirm the right status shows a percentage and a 20-character bar, e.g. ` 42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅` for memory and ` 87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█` for CPU.
+   - Confirm the leading percentage text is always 4 characters wide so the bar does not shift when the value changes.
    - Confirm the bar grows from 1 to 20 columns over the first 20 sample intervals, then stays fixed at 20 columns.
    - Set `enabled = false` and confirm the modules disappear.
    - Lower `throttle` to `1` and confirm updates are still limited to once per second (`os.time()` resolution).
