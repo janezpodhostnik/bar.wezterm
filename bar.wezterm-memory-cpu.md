@@ -187,21 +187,21 @@ In `plugin/bar/config.lua`, add under `modules`:
 ```lua
 memory = {
   enabled = false,
-  icon = wez.nerdfonts.md_memory,
+  icon = "MEM",
   color = 3,
   throttle = 2,
   max_width = 20,
 },
 cpu = {
   enabled = false,
-  icon = wez.nerdfonts.md_cpu_64_bit,
+  icon = "CPU",
   color = 4,
   throttle = 2,
   max_width = 20,
 },
 ```
 
-Use a suitable CPU Nerd Font icon if `md_cpu_64_bit` is unavailable.
+Use short text labels (`"MEM"`, `"CPU"`) for the icons so the modules are immediately readable without relying on Nerd Fonts.
 
 ---
 

@@ -143,14 +143,14 @@ M.options = {
     },
     memory = {
       enabled = false,
-      icon = wez.nerdfonts.md_memory,
+      icon = "MEM",
       color = 3,
       throttle = 2,
       max_width = 20,
     },
     cpu = {
       enabled = false,
-      icon = wez.nerdfonts.md_cpu_64_bit,
+      icon = "CPU",
       color = 4,
       throttle = 2,
       max_width = 20,
