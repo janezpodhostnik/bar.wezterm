@@ -82,12 +82,24 @@ Pages occupied by compressor: 10000.
 Pages purgeable: 5000.
 ]]
 local mused, mtotal, mpct = memory._parse_macos_memory(vmstat)
-test(
-  "macos used pages are active+inactive+wired+compressor-purgeable",
-  mused == (200000 + 30000 + 50000 + 10000 - 5000) * 16384 / 1024
-)
-test("macos total is used + free + speculative", mtotal == mused + (100000 + 10000) * 16384 / 1024)
+test("macos used pages are active+inactive+wired+compressor", mused == (200000 + 30000 + 50000 + 10000) * 16384 / 1024)
+test("macos total is used + free + speculative + purgeable", mtotal == mused + (100000 + 10000 + 5000) * 16384 / 1024)
 test("macos percentage is reasonable", mpct > 0 and mpct < 100)
+
+print "\nmemory._parse_macos_memory with commas"
+local vmstat_commas = [[
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free: 100,000.
+Pages active: 2,000,000.
+Pages inactive: 30,000.
+Pages wired down: 50,000.
+Pages speculative: 10,000.
+Pages occupied by compressor: 10,000.
+Pages purgeable: 5,000.
+]]
+local cused, ctotal, cpct = memory._parse_macos_memory(vmstat_commas)
+test("comma separators are stripped", cused == (2000000 + 30000 + 50000 + 10000) * 16384 / 1024)
+test("comma total is correct", ctotal == cused + (100000 + 10000 + 5000) * 16384 / 1024)
 
 print "\ncpu._parse_linux_cpu"
 local stat = [[
@@ -115,6 +127,16 @@ local iostat = [[
 ]]
 local cpupct = cpu._parse_macos_cpu(iostat)
 test("macos cpu uses second sample idle", math.abs(cpupct - 7) < 0.01)
+
+print "\ncpu._parse_macos_cpu with disk stats"
+local iostat_disk = [[
+              disk0               cpu    load average
+    KB/t  tps  MB/s  us sy id   1m   5m   15m
+   21.79   16  0.27   5  3 92  1.44 1.83 2.00
+   21.79   16  0.27   4  2 94  1.44  1.83  2.00
+]]
+local cpupct_disk = cpu._parse_macos_cpu(iostat_disk)
+test("macos cpu locates idle column when disk stats are present", math.abs(cpupct_disk - 6) < 0.01)
 
 print "\nmemory.get_status / cpu.get_status"
 local m1 = memory.get_status(5, 20)

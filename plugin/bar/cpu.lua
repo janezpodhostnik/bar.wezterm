@@ -57,7 +57,9 @@ M._compute_linux_cpu_pct = function(total, idle, prev_total, prev_idle)
   return math.min(100, math.max(0, used_pct))
 end
 
----parse macOS iostat -c 2 output and return the used CPU percentage
+---parse macOS iostat output and return the used CPU percentage.
+---the output may contain disk statistics before the cpu columns, so we locate
+---the "id" column in the header and use that index for every data line.
 ---@param s string
 ---@return number?
 M._parse_macos_cpu = function(s)
@@ -65,20 +67,49 @@ M._parse_macos_cpu = function(s)
     return nil
   end
 
-  local seen_first = false
+  local lines = {}
   for line in s:gmatch "[^\n]+" do
+    table.insert(lines, line)
+  end
+
+  local idle_index = nil
+  for _, line in ipairs(lines) do
     local fields = {}
     for token in line:gmatch "%S+" do
       table.insert(fields, token)
     end
-    if #fields >= 3 and tonumber(fields[1]) and tonumber(fields[2]) and tonumber(fields[3]) then
-      if seen_first then
-        local idle = tonumber(fields[3])
-        if idle then
+    for i, token in ipairs(fields) do
+      if token == "id" then
+        idle_index = i
+        break
+      end
+    end
+    if idle_index then
+      break
+    end
+  end
+
+  if not idle_index then
+    return nil
+  end
+
+  local seen_first = false
+  local header_found = false
+  for _, line in ipairs(lines) do
+    if header_found then
+      local fields = {}
+      for token in line:gmatch "%S+" do
+        table.insert(fields, token)
+      end
+      if #fields >= idle_index and tonumber(fields[idle_index]) then
+        if seen_first then
+          local idle = tonumber(fields[idle_index])
           return math.min(100, math.max(0, 100 - idle))
         end
+        seen_first = true
       end
-      seen_first = true
+    elseif line:find("id", 1, true) then
+      header_found = true
     end
   end
 

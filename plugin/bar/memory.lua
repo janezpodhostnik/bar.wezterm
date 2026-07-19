@@ -46,19 +46,23 @@ M._parse_macos_memory = function(s)
   end
 
   local function parse_pages(name)
-    return tonumber(s:match(name .. ":%s+(%d+)%.?"))
+    local raw = s:match(name .. ":%s+([%d,]+)%.?")
+    if not raw then
+      return 0
+    end
+    return tonumber((raw:gsub(",", ""))) or 0
   end
 
-  local free = parse_pages "Pages free" or 0
-  local active = parse_pages "Pages active" or 0
-  local inactive = parse_pages "Pages inactive" or 0
-  local wired = parse_pages "Pages wired down" or 0
-  local speculative = parse_pages "Pages speculative" or 0
-  local compressor = parse_pages "Pages occupied by compressor" or 0
-  local purgeable = parse_pages "Pages purgeable" or 0
+  local free = parse_pages "Pages free"
+  local active = parse_pages "Pages active"
+  local inactive = parse_pages "Pages inactive"
+  local wired = parse_pages "Pages wired down"
+  local speculative = parse_pages "Pages speculative"
+  local compressor = parse_pages "Pages occupied by compressor"
+  local purgeable = parse_pages "Pages purgeable"
 
-  local used_pages = active + inactive + wired + compressor - purgeable
-  local free_pages = free + speculative
+  local used_pages = active + inactive + wired + compressor
+  local free_pages = free + speculative + purgeable
   local total_pages = used_pages + free_pages
   if total_pages <= 0 then
     return nil
