@@ -29,7 +29,12 @@ M._parse_linux_memory = function(s)
   return used, total, used / total * 100
 end
 
----parse macOS vm_stat output and return used/total in kB plus used_pct
+---parse macOS vm_stat output and return used/total in kB plus used_pct.
+---matches Activity Monitor "Memory Used" (app memory + wired + compressed),
+---which is also what monitoring tools like Stats and btop report: file-backed
+---pages are reclaimable cache and count as available, not used. counting
+---inactive/cache pages as used makes memory always read near 100% on macOS,
+---because macOS keeps very little memory truly free.
 ---@param s string
 ---@return number? used
 ---@return number? total
@@ -54,15 +59,14 @@ M._parse_macos_memory = function(s)
   end
 
   local free = parse_pages "Pages free"
-  local active = parse_pages "Pages active"
-  local inactive = parse_pages "Pages inactive"
   local wired = parse_pages "Pages wired down"
-  local speculative = parse_pages "Pages speculative"
   local compressor = parse_pages "Pages occupied by compressor"
   local purgeable = parse_pages "Pages purgeable"
+  local anonymous = parse_pages "Anonymous pages"
+  local file_backed = parse_pages "File%-backed pages"
 
-  local used_pages = active + inactive + wired + compressor
-  local free_pages = free + speculative + purgeable
+  local used_pages = math.max(0, anonymous - purgeable) + wired + compressor
+  local free_pages = free + file_backed + purgeable
   local total_pages = used_pages + free_pages
   if total_pages <= 0 then
     return nil

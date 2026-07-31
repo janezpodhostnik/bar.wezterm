@@ -69,11 +69,17 @@ The aggregate `cpu` line gives average utilization across all cores.
 `vm_stat` lines end with a period. Parse the page size from the header, then:
 
 ```
-used_pages  = active + inactive + wired + compressor - purgeable
-free_pages  = free + speculative
+used_pages  = anonymous - purgeable + wired + compressor
+free_pages  = free + file_backed + purgeable
 total_pages = used_pages + free_pages
 used_pct    = used_pages / total_pages * 100
 ```
+
+This matches Activity Monitor "Memory Used" (app memory + wired + compressed),
+which is also what monitoring tools like Stats and btop report: file-backed
+pages are reclaimable cache and count as available, not used. Counting
+inactive/cache pages as used makes memory always read near 100% on macOS,
+because macOS keeps very little memory truly free.
 
 ### macOS CPU
 

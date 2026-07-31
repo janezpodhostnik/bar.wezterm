@@ -80,10 +80,15 @@ Pages wired down: 50000.
 Pages speculative: 10000.
 Pages occupied by compressor: 10000.
 Pages purgeable: 5000.
+File-backed pages: 60000.
+Anonymous pages: 180000.
 ]]
 local mused, mtotal, mpct = memory._parse_macos_memory(vmstat)
-test("macos used pages are active+inactive+wired+compressor", mused == (200000 + 30000 + 50000 + 10000) * 16384 / 1024)
-test("macos total is used + free + speculative + purgeable", mtotal == mused + (100000 + 10000 + 5000) * 16384 / 1024)
+test(
+  "macos used pages are anonymous-purgeable+wired+compressor",
+  mused == (180000 - 5000 + 50000 + 10000) * 16384 / 1024
+)
+test("macos file-backed cache counts as available", mtotal == mused + (100000 + 60000 + 5000) * 16384 / 1024)
 test("macos percentage is reasonable", mpct > 0 and mpct < 100)
 
 print "\nmemory._parse_macos_memory with commas"
@@ -96,10 +101,12 @@ Pages wired down: 50,000.
 Pages speculative: 10,000.
 Pages occupied by compressor: 10,000.
 Pages purgeable: 5,000.
+File-backed pages: 40,000.
+Anonymous pages: 2,000,000.
 ]]
 local cused, ctotal, cpct = memory._parse_macos_memory(vmstat_commas)
-test("comma separators are stripped", cused == (2000000 + 30000 + 50000 + 10000) * 16384 / 1024)
-test("comma total is correct", ctotal == cused + (100000 + 10000 + 5000) * 16384 / 1024)
+test("comma separators are stripped", cused == (2000000 - 5000 + 50000 + 10000) * 16384 / 1024)
+test("comma total is correct", ctotal == cused + (100000 + 40000 + 5000) * 16384 / 1024)
 
 print "\ncpu._parse_linux_cpu"
 local stat = [[
