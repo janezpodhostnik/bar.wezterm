@@ -5,6 +5,8 @@ local utilities = require "bar.utilities"
 ---@class bar.cpu
 local M = {}
 
+local iostat_cache = utilities._cache_path "bar.wezterm-iostat"
+
 local prev_total = 0
 local prev_idle = 0
 
@@ -17,24 +19,26 @@ M._parse_linux_cpu = function(s)
     return nil
   end
 
-  local line = s:match "^(cpu.-)\n"
+  -- only the aggregate cpu line (first line of /proc/stat); the %s guard
+  -- keeps per-core lines (cpu0, cpu1, ...) from matching
+  local line = s:match "^(cpu%s[^\n]*)"
   if not line then
     return nil
   end
 
-  local fields = {}
+  local total, idle, count = 0, 0, 0
   for n in line:gmatch "%d+" do
-    table.insert(fields, tonumber(n))
+    count = count + 1
+    local v = tonumber(n)
+    total = total + v
+    if count == 4 or count == 5 then -- idle + iowait
+      idle = idle + v
+    end
   end
-  if #fields < 4 then
+  if count < 4 then
     return nil
   end
 
-  local total = 0
-  for _, v in ipairs(fields) do
-    total = total + v
-  end
-  local idle = fields[4] + (fields[5] or 0)
   return total, idle
 end
 
@@ -102,13 +106,14 @@ local function get_cpu_usage()
       wez.log_error(err)
       return nil
     end
-    local content = f:read "*a"
+    -- only the first (aggregate) line is needed
+    local line = f:read "*l"
     f:close()
-    if not content then
+    if not line then
       return nil
     end
 
-    local total, idle = M._parse_linux_cpu(content)
+    local total, idle = M._parse_linux_cpu(line)
     if not total or not idle then
       return nil
     end
@@ -126,12 +131,14 @@ local function get_cpu_usage()
   end
 
   if utilities.is_darwin then
-    local success, stdout, stderr = wez.run_child_process { "iostat", "-c", "2" }
-    if not success then
-      wez.log_error(stderr)
+    -- iostat -c 2 samples for ~1 second; run it in the background and parse
+    -- the last completed sample, so the status bar never blocks
+    utilities._spawn_to_file("iostat -c 2", iostat_cache)
+    local content = utilities._read_file(iostat_cache)
+    if not content then
       return nil
     end
-    return M._parse_macos_cpu(stdout)
+    return M._parse_macos_cpu(content)
   end
 
   return nil

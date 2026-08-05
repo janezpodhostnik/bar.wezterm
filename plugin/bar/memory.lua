@@ -5,6 +5,8 @@ local utilities = require "bar.utilities"
 ---@class bar.memory
 local M = {}
 
+local vm_stat_cache = utilities._cache_path "bar.wezterm-vm_stat"
+
 ---parse Linux /proc/meminfo content and return used/total in kB plus used_pct
 ---@param s string
 ---@return number? used
@@ -78,21 +80,28 @@ local function get_memory_usage()
       wez.log_error(err)
       return nil
     end
-    local content = f:read "*a"
-    f:close()
-    if not content then
-      return nil
+    -- MemTotal is the first line and MemAvailable the third; stop reading
+    -- as soon as MemAvailable is seen instead of slurping the whole file
+    local lines = {}
+    for line in f:lines() do
+      lines[#lines + 1] = line
+      if line:match "^MemAvailable:" then
+        break
+      end
     end
-    return M._parse_linux_memory(content)
+    f:close()
+    return M._parse_linux_memory(table.concat(lines, "\n"))
   end
 
   if utilities.is_darwin then
-    local success, stdout, stderr = wez.run_child_process { "vm_stat" }
-    if not success then
-      wez.log_error(stderr)
+    -- refresh in the background and parse the last completed sample, so
+    -- the status bar never blocks on the vm_stat subprocess
+    utilities._spawn_to_file("vm_stat", vm_stat_cache)
+    local content = utilities._read_file(vm_stat_cache)
+    if not content then
       return nil
     end
-    return M._parse_macos_memory(stdout)
+    return M._parse_macos_memory(content)
   end
 
   return nil

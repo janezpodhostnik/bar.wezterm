@@ -33,7 +33,7 @@ plugin/
 | Module | Linux | macOS | Notes |
 |--------|-------|-------|-------|
 | **memory** | Read `/proc/meminfo` | Spawn `vm_stat` | Parse page size from the `vm_stat` header. |
-| **cpu** | Read `/proc/stat` | Spawn `iostat -c 2` | `iostat -c 2` blocks ~1 s. Use a conservative macOS throttle. |
+| **cpu** | Read `/proc/stat` | Spawn `iostat -c 2` | `iostat -c 2` samples for ~1 s, so it runs in the background (see Performance notes). |
 
 On Windows, both modules return `""` (unsupported).
 
@@ -298,7 +298,7 @@ local is_linux = wez.target_triple:find "linux" ~= nil
 
 - Default throttle is `2` seconds between measurements, with `samples_per_column = 3` (6-second columns).
 - Linux reads files directly; no subprocesses.
-- macOS CPU spawns a subprocess that blocks for ~1 second. macOS users should set `cpu.throttle` to at least `5` (or disable the module).
+- macOS CPU samples via `iostat -c 2` in the background (writing to a cache file) so its ~1 s sampling window never blocks the status bar; the rendered value lags one throttle interval. The default macOS `cpu.throttle` is `5`.
 - The histogram uses a fixed 20-character width; no sparklines or history graphs beyond this.
 
 ---

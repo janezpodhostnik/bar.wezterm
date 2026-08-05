@@ -154,7 +154,9 @@ M.options = {
       enabled = false,
       icon = "CPU",
       color = 4,
-      throttle = 2,
+      -- iostat samples for ~1 second on macOS; use a conservative
+      -- default throttle there
+      throttle = utilities.is_darwin and 5 or 2,
       max_width = 20,
       samples_per_column = 3,
     },

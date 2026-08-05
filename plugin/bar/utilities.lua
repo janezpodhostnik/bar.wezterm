@@ -94,6 +94,51 @@ H._constant_width = function(prev, next)
   return H._space(next, first_half, second_half)
 end
 
+---return a writable per-user cache file path for the plugin
+---@param name string file name
+---@return string
+H._cache_path = function(name)
+  local dir
+  if H.is_windows then
+    dir = os.getenv "TEMP" or os.getenv "TMP" or "."
+  else
+    dir = os.getenv "XDG_RUNTIME_DIR" or "/tmp"
+  end
+  return dir .. "/" .. name
+end
+
+---read an entire file, returning nil if it cannot be opened
+---@param path string
+---@return string?
+H._read_file = function(path)
+  if type(path) ~= "string" then
+    return nil
+  end
+  local f = io.open(path, "r")
+  if not f then
+    return nil
+  end
+  local content = f:read "*a"
+  f:close()
+  return content
+end
+
+---spawn a shell command in the background, redirecting stdout to a file.
+---never blocks the caller; failures are silent (the file simply does not
+---update), so callers must tolerate stale or missing data.
+---@param command string shell command line (without redirection)
+---@param path string output file path
+H._spawn_to_file = function(command, path)
+  if type(command) ~= "string" or type(path) ~= "string" then
+    return
+  end
+  if H.is_windows then
+    wez.background_child_process { "cmd", "/c", command .. ' > "' .. path .. '"' }
+  else
+    wez.background_child_process { "sh", "-c", command .. " > '" .. path .. "'" }
+  end
+end
+
 ---map a percentage to a vertical Unicode block character
 ---@param pct number
 ---@return string
