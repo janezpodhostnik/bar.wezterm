@@ -14,6 +14,10 @@
 local LABEL = arg[1] or "run"
 local TICKS = tonumber(arg[2]) or 2000
 local SPT_LATENCY_MS = 20 -- simulated spt subprocess latency
+local REMOTE = LABEL == "remote" -- simulate a pane in an ssh mux domain
+
+-- simulated remote probe: each spawn advances cpu counters (~10% usage)
+local ssh_spawns = 0
 
 -- ---------- counters ----------
 local counts = {
@@ -109,6 +113,25 @@ package.loaded.wezterm = {
           f:close()
         end
       end
+      if path and cmdline:find "ssh" then
+        -- simulate the ssh probe answering instantly
+        ssh_spawns = ssh_spawns + 1
+        local f = io.open(path, "w")
+        if f then
+          if cmdline:find "hostname" then
+            f:write "vesna\n"
+          else
+            f:write(
+              string.format(
+                "cpu  %d 0 0 %d 0 0 0 0 0 0\nMemTotal:       1000 kB\nMemAvailable:    500 kB\n",
+                10 * ssh_spawns,
+                90 * ssh_spawns
+              )
+            )
+          end
+          f:close()
+        end
+      end
     end
   end,
   log_error = function(msg)
@@ -143,7 +166,12 @@ local palette = {
 
 local fake_window = {
   effective_config = function()
-    return { resolved_palette = palette, tab_max_width = 32, color_scheme = "Bench" }
+    return {
+      resolved_palette = palette,
+      tab_max_width = 32,
+      color_scheme = "Bench",
+      ssh_domains = REMOTE and { { name = "vesna.local", remote_address = "vesna.local", username = "janezp" } } or nil,
+    }
   end,
   active_workspace = function()
     return "default"
@@ -163,6 +191,9 @@ local fake_window = {
 }
 
 local fake_pane = {
+  get_domain_name = function()
+    return REMOTE and "vesna.local" or "local"
+  end,
   get_foreground_process_name = function()
     counts.get_foreground_process_name = counts.get_foreground_process_name + 1
     return "/usr/bin/zsh"

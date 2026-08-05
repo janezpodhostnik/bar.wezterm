@@ -22,6 +22,7 @@ plugin/
     ├── config.lua          # MODIFY: add default options
     ├── memory.lua          # CREATE
     ├── cpu.lua             # CREATE
+    ├── remote.lua          # CREATE: ssh mux domain support
     ├── utilities.lua       # MODIFY: add histogram helpers
     └── test-memory-cpu.lua # CREATE: optional unit tests
 ```
@@ -36,6 +37,30 @@ plugin/
 | **cpu** | Read `/proc/stat` | Spawn `iostat -c 2` | `iostat -c 2` samples for ~1 s, so it runs in the background (see Performance notes). |
 
 On Windows, both modules return `""` (unsupported).
+
+### Remote (ssh mux domains)
+
+When the active pane belongs to an ssh mux domain (`wezterm connect host`),
+`plugin/bar/remote.lua` routes the data sources to the remote host:
+
+- `remote.get_context(pane, conf)` maps `pane:get_domain_name()` to a context
+  via `conf.ssh_domains` (name → `remote_address`/`username`), falling back to
+  parsing ad-hoc `SSH:<host>` domain names. The local domain returns `nil`.
+- memory/cpu: one ssh probe per `modules.remote.throttle` seconds collects
+  both metrics —
+  `ssh -o BatchMode=yes -o ConnectTimeout=2 <host> 'head -1 /proc/stat; grep -E "MemTotal|MemAvailable" /proc/meminfo'`
+  — spawned non-blocking with `utilities._spawn_to_file` (same background
+  cache-file pattern as macOS `vm_stat`/`iostat`). At most one probe is ever
+  in flight per host; an unanswered probe is presumed dead after 10 s.
+- Each host gets its own histogram state via
+  `utilities._make_histogram_status`, so windows on different machines never
+  mix samples. One probe feeds both modules; each getter consumes a probe
+  result exactly once (a sequence counter).
+- `username` comes from the ssh domain's `username`; `hostname` is the
+  remote `hostname -s` (resolved asynchronously, first DNS label as fallback).
+- Remote linux only: a probe that yields no parseable data is ignored and
+  the last rendered text is kept. `clock` and `spotify` stay local; `cwd`,
+  tab titles and the pane/ssh modules are already remote-aware via the mux.
 
 ### Linux memory
 
@@ -205,6 +230,12 @@ cpu = {
   throttle = 2,
   max_width = 20,
   samples_per_column = 3,
+},
+-- not a displayed module: routes memory/cpu/username/hostname to the
+-- remote host when the active pane belongs to an ssh mux domain
+remote = {
+  enabled = true,
+  throttle = 2,
 },
 ```
 

@@ -76,6 +76,7 @@ local spotify = require "bar.spotify"
 local paths = require "bar.paths"
 local memory = require "bar.memory"
 local cpu = require "bar.cpu"
+local remote = require "bar.remote"
 
 -- hostname never changes during a session; resolve it once
 local cached_hostname = wez.hostname()
@@ -87,7 +88,16 @@ local cached_hostname = wez.hostname()
 local callbacks = {
   {
     name = "memory",
-    func = function()
+    func = function(_, _, remote_ctx)
+      if remote_ctx then
+        return remote.get_status(
+          remote_ctx,
+          "memory",
+          options.modules.remote.throttle,
+          options.modules.memory.max_width,
+          options.modules.memory.samples_per_column
+        )
+      end
       return memory.get_status(
         options.modules.memory.throttle,
         options.modules.memory.max_width,
@@ -97,7 +107,16 @@ local callbacks = {
   },
   {
     name = "cpu",
-    func = function()
+    func = function(_, _, remote_ctx)
+      if remote_ctx then
+        return remote.get_status(
+          remote_ctx,
+          "cpu",
+          options.modules.remote.throttle,
+          options.modules.cpu.max_width,
+          options.modules.cpu.samples_per_column
+        )
+      end
       return cpu.get_status(
         options.modules.cpu.throttle,
         options.modules.cpu.max_width,
@@ -113,13 +132,19 @@ local callbacks = {
   },
   {
     name = "username",
-    func = function()
+    func = function(_, _, remote_ctx)
+      if remote_ctx and remote_ctx.user then
+        return remote_ctx.user
+      end
       return user.username
     end,
   },
   {
     name = "hostname",
-    func = function()
+    func = function(_, _, remote_ctx)
+      if remote_ctx then
+        return remote.short_host(remote_ctx)
+      end
       return cached_hostname
     end,
   },
@@ -227,6 +252,13 @@ wez.on("update-status", function(window, pane)
     process = pane:get_foreground_process_name()
   end
 
+  -- when the active pane belongs to a remote (ssh) mux domain, route
+  -- memory/cpu/username/hostname to that host
+  local remote_ctx = nil
+  if options.modules.remote.enabled then
+    remote_ctx = remote.get_context(pane, conf)
+  end
+
   -- left status
   local left_cells = {
     { Background = { Color = palette.tab_bar.background } },
@@ -290,7 +322,7 @@ wez.on("update-status", function(window, pane)
     if not options.modules[name].enabled then
       goto continue
     end
-    local text = func(pane, process)
+    local text = func(pane, process, remote_ctx)
     if #text > 0 then
       table.insert(right_cells, { Foreground = { Color = palette.ansi[options.modules[name].color] } })
       table.insert(right_cells, { Text = text })

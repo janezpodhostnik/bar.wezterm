@@ -215,6 +215,85 @@ test("spotify keeps only the main artist when it fits", s4 == "Long Artist - Son
 
 os.time = real_time
 
+print "\nremote.get_context"
+-- expose memory/cpu so bar.remote can require them
+package.loaded["bar.memory"] = memory
+package.loaded["bar.cpu"] = cpu
+local remote = require "plugin.bar.remote"
+
+local function mock_pane(domain)
+  return {
+    get_domain_name = function()
+      return domain
+    end,
+  }
+end
+local ssh_conf = { ssh_domains = { { name = "vesna.local", remote_address = "vesna.local", username = "janezp" } } }
+test("local domain returns nil", remote.get_context(mock_pane "local", ssh_conf) == nil)
+local ctx = remote.get_context(mock_pane "vesna.local", ssh_conf)
+test("ssh_domains entry resolves host and user", ctx ~= nil and ctx.host == "vesna.local" and ctx.user == "janezp")
+local adhoc = remote.get_context(mock_pane "SSH:box.example.com", {})
+test("ad-hoc SSH: domain resolves host", adhoc ~= nil and adhoc.host == "box.example.com" and adhoc.user == nil)
+local unix_ctx = remote.get_context(mock_pane "some-unix-domain", {})
+test("non-ssh domain resolves without host", unix_ctx ~= nil and unix_ctx.host == nil)
+
+print "\nremote combined stats output"
+local combined = "cpu  100 0 50 800 20 0 30 0 0 0\nMemTotal:       1000 kB\nMemAvailable:    500 kB\n"
+local rt, ridle = cpu._parse_linux_cpu(combined)
+test("cpu total aggregates all fields", rt == 1000)
+test("cpu idle includes iowait", ridle == 820)
+local _, _, rpct = memory._parse_linux_memory(combined)
+test("memory percentage parses", rpct == 50)
+
+print "\nremote.short_host"
+-- background spawns never complete here, so fallbacks are used
+package.loaded.wezterm.background_child_process = function() end
+test(
+  "falls back to first DNS label of host",
+  remote.short_host { domain = "box.example.com", host = "box.example.com" } == "box"
+)
+test("non-ssh domain uses the domain name", remote.short_host { domain = "some-unix-domain" } == "some-unix-domain")
+
+print "\nremote.get_status"
+test("returns empty without ssh host", remote.get_status({ domain = "some-unix-domain" }, "memory", 2, 20, 3) == "")
+
+-- simulate a probe answer by writing its cache file
+local probe_path = utilities._cache_path "bar.wezterm-remote-test.invalid"
+os.remove(probe_path)
+local probe_ctx = { domain = "test.invalid", host = "test.invalid" }
+local pf = io.open(probe_path, "w")
+pf:write(combined)
+pf:close()
+-- the first call spawns this session's first probe; content that predates
+-- the session (e.g. left over by a previous run) must not be parsed
+local stale = remote.get_status(probe_ctx, "memory", 0, 5, 1)
+test("stale pre-session probe data is ignored", stale == "")
+local rm = remote.get_status(probe_ctx, "memory", 0, 5, 1)
+test("memory status shows probed percentage", rm == " 50% ▁▁▁▁▄")
+local rc = remote.get_status(probe_ctx, "cpu", 0, 5, 1)
+test("cpu first probe returns empty (baseline)", rc == "")
+os.remove(probe_path)
+
+print "\nremote in-flight guard"
+local spawn_count = 0
+package.loaded.wezterm.background_child_process = function()
+  spawn_count = spawn_count + 1
+end
+local guard_ctx = { domain = "guard.invalid", host = "guard.invalid" }
+os.remove(utilities._cache_path "bar.wezterm-remote-guard.invalid")
+local real_time = os.time
+local fake_now = 1700000000
+os.time = function()
+  return fake_now
+end
+remote.get_status(guard_ctx, "memory", 2, 5, 1) -- spawns the first probe
+remote.get_status(guard_ctx, "memory", 2, 5, 1) -- unanswered: no respawn
+test("probe does not respawn while in flight", spawn_count == 1)
+fake_now = fake_now + 11 -- past IN_FLIGHT_TIMEOUT (10s)
+remote.get_status(guard_ctx, "memory", 2, 5, 1)
+test("probe respawns once presumed dead", spawn_count == 2)
+os.time = real_time
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
   os.exit(1)

@@ -29,6 +29,10 @@ local M = {}
 ---@field max_width number
 ---@field samples_per_column number
 
+---@class option.remote
+---@field enabled boolean
+---@field throttle number
+
 ---@class option.spotify : option.module
 ---@field max_width number
 ---@field throttle number
@@ -49,6 +53,7 @@ local M = {}
 ---@field spotify option.spotify
 ---@field memory option.histogram
 ---@field cpu option.histogram
+---@field remote option.remote
 
 ---@class option.padding.tabs
 ---@field left number
@@ -159,6 +164,12 @@ M.options = {
       throttle = utilities.is_darwin and 5 or 2,
       max_width = 20,
       samples_per_column = 3,
+    },
+    -- not a displayed module: routes memory/cpu/username/hostname to the
+    -- remote host when the active pane belongs to an ssh mux domain
+    remote = {
+      enabled = true,
+      throttle = 2,
     },
   },
 }
