@@ -77,6 +77,87 @@ local paths = require "bar.paths"
 local memory = require "bar.memory"
 local cpu = require "bar.cpu"
 
+-- hostname never changes during a session; resolve it once
+local cached_hostname = wez.hostname()
+
+-- right-status module callbacks, built once instead of on every
+-- update-status tick. `options` is read at call time (apply_to_config runs
+-- before the first tick). each func receives the pane and the pane's
+-- foreground process name (fetched at most once per tick, may be nil).
+local callbacks = {
+  {
+    name = "memory",
+    func = function()
+      return memory.get_status(
+        options.modules.memory.throttle,
+        options.modules.memory.max_width,
+        options.modules.memory.samples_per_column
+      )
+    end,
+  },
+  {
+    name = "cpu",
+    func = function()
+      return cpu.get_status(
+        options.modules.cpu.throttle,
+        options.modules.cpu.max_width,
+        options.modules.cpu.samples_per_column
+      )
+    end,
+  },
+  {
+    name = "spotify",
+    func = function()
+      return spotify.get_currently_playing(options.modules.spotify.max_width, options.modules.spotify.throttle)
+    end,
+  },
+  {
+    name = "username",
+    func = function()
+      return user.username
+    end,
+  },
+  {
+    name = "hostname",
+    func = function()
+      return cached_hostname
+    end,
+  },
+  {
+    name = "clock",
+    func = function()
+      return wez.time.now():format(options.modules.clock.format)
+    end,
+  },
+  {
+    name = "cwd",
+    func = function(pane, process)
+      if options.modules.ssh.enabled then
+        if process and (utilities._basename(process) or ""):match "ssh$" then
+          return ""
+        end
+      end
+      return paths.get_cwd(pane, true)
+    end,
+  },
+  {
+    name = "ssh",
+    func = function(_, process)
+      if not process then
+        return ""
+      end
+      if (utilities._basename(process) or ""):match "ssh$" then
+        return "ssh"
+      end
+      return ""
+    end,
+  },
+}
+
+-- last rendered status per window, used to skip redundant status updates
+local last_left_status = {}
+local last_right_status = {}
+
 ---conforming to https://github.com/wez/wezterm/commit/e4ae8a844d8feaa43e1de34c5cc8b4f07ce525dd
 ---@param c table: wezterm config object
 ---@param opts bar.options
@@ -139,6 +220,13 @@ wez.on("update-status", function(window, pane)
 
   local palette = conf.resolved_palette
 
+  -- the foreground process name is shared by the pane, cwd and ssh
+  -- modules; fetch it at most once per tick
+  local process
+  if options.modules.pane.enabled or options.modules.ssh.enabled then
+    process = pane:get_foreground_process_name()
+  end
+
   -- left status
   local left_cells = {
     { Background = { Color = palette.tab_bar.background } },
@@ -174,7 +262,6 @@ wez.on("update-status", function(window, pane)
   end
 
   if options.modules.pane.enabled then
-    local process = pane:get_foreground_process_name()
     if not process then
       goto set_left_status
     end
@@ -185,83 +272,16 @@ wez.on("update-status", function(window, pane)
   end
 
   ::set_left_status::
-  window:set_left_status(wez.format(left_cells))
+  local window_id = window:window_id()
+  local left_status = wez.format(left_cells)
+  if last_left_status[window_id] ~= left_status then
+    window:set_left_status(left_status)
+    last_left_status[window_id] = left_status
+  end
 
   -- right status
   local right_cells = {
     { Background = { Color = palette.tab_bar.background } },
-  }
-
-  local callbacks = {
-    {
-      name = "memory",
-      func = function()
-        return memory.get_status(
-          options.modules.memory.throttle,
-          options.modules.memory.max_width,
-          options.modules.memory.samples_per_column
-        )
-      end,
-    },
-    {
-      name = "cpu",
-      func = function()
-        return cpu.get_status(
-          options.modules.cpu.throttle,
-          options.modules.cpu.max_width,
-          options.modules.cpu.samples_per_column
-        )
-      end,
-    },
-    {
-      name = "spotify",
-      func = function()
-        return spotify.get_currently_playing(options.modules.spotify.max_width, options.modules.spotify.throttle)
-      end,
-    },
-    {
-      name = "username",
-      func = function()
-        return user.username
-      end,
-    },
-    {
-      name = "hostname",
-      func = function()
-        return wez.hostname()
-      end,
-    },
-    {
-      name = "clock",
-      func = function()
-        return wez.time.now():format(options.modules.clock.format)
-      end,
-    },
-    {
-      name = "cwd",
-      func = function()
-        if options.modules.ssh.enabled then
-          local process = pane:get_foreground_process_name()
-          if process and (utilities._basename(process) or ""):match "ssh$" then
-            return ""
-          end
-        end
-        return paths.get_cwd(pane, true)
-      end,
-    },
-    {
-      name = "ssh",
-      func = function()
-        local process = pane:get_foreground_process_name()
-        if not process then
-          return ""
-        end
-        if (utilities._basename(process) or ""):match "ssh$" then
-          return "ssh"
-        end
-        return ""
-      end,
-    },
   }
 
   for _, callback in ipairs(callbacks) do
@@ -270,7 +290,7 @@ wez.on("update-status", function(window, pane)
     if not options.modules[name].enabled then
       goto continue
     end
-    local text = func()
+    local text = func(pane, process)
     if #text > 0 then
       table.insert(right_cells, { Foreground = { Color = palette.ansi[options.modules[name].color] } })
       table.insert(right_cells, { Text = text })
@@ -287,7 +307,11 @@ wez.on("update-status", function(window, pane)
   table.remove(right_cells, #right_cells)
   table.insert(right_cells, { Text = string.rep(" ", options.padding.right) })
 
-  window:set_right_status(wez.format(right_cells))
+  local right_status = wez.format(right_cells)
+  if last_right_status[window_id] ~= right_status then
+    window:set_right_status(right_status)
+    last_right_status[window_id] = right_status
+  end
 end)
 
 wez.on("window-config-reloaded", function(window, _)
