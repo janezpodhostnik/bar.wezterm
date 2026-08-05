@@ -4,12 +4,12 @@
 
 Add two right-status modules to `bar.wezterm`:
 
-- `memory` — used memory percentage, a 20-column histogram of recent usage, and used/total in GiB.
+- `memory` — used memory percentage and a 20-column histogram of recent usage.
 - `cpu` — CPU usage percentage and a 20-column histogram of recent usage.
 
 Both follow `AGENTS.md` conventions, support Linux and macOS, and throttle sampling so the bar stays cheap.
 
-The histogram is a text-based bar chart: each of the 20 columns represents one sample interval, and the column height (via Unicode block characters) represents the relative usage at that interval.
+The histogram is a text-based bar chart: each of the 20 columns aggregates `samples_per_column` measurements (default 3), keeping the maximum so short spikes stay visible, and the column height (via Unicode block characters) represents the usage at that interval.
 
 ---
 
@@ -44,7 +44,7 @@ used      = MemTotal - MemAvailable
 used_pct  = used / MemTotal * 100
 ```
 
-`/proc/meminfo` values are in kB; convert to GiB for display.
+`/proc/meminfo` values are in kB.
 
 ### Linux CPU
 
@@ -136,16 +136,13 @@ end
 
 ### History buffer
 
-Each module keeps a history of the last `max_width` sampled percentages (default 20) and renders it with `utilities._render_histogram`. On every successful sample:
-
-1. Append the new percentage to the history.
-2. If the history exceeds `max_width`, drop the oldest value.
+Each module keeps a history of the last `max_width` completed columns (default 20) and renders it with `utilities._render_histogram`. Measurements are taken every `throttle` seconds and aggregated into columns: after `samples_per_column` measurements, their maximum is appended to the history and the oldest value is dropped if the history exceeds `max_width`. The in-progress column (the max so far) is rendered after the completed columns.
 
 Render the history left-to-right (oldest on the left, newest on the right). If the history is shorter than `max_width`, pad the left side with `▁`.
 
 ### Update cadence
 
-A new sample is added to the histogram only when the throttle interval has elapsed. Therefore, one histogram column corresponds to one `throttle` period. With the default `throttle = 2`, the histogram covers the last 40 seconds.
+A new measurement is taken only when the throttle interval has elapsed. One histogram column therefore spans `throttle × samples_per_column` seconds. With the defaults (`throttle = 2`, `samples_per_column = 3`, `max_width = 20`), each column covers 6 seconds and the histogram covers the last 2 minutes.
 
 ---
 
@@ -155,19 +152,21 @@ Both modules return a table with one function.
 
 ```lua
 -- plugin/bar/memory.lua
----@param throttle integer seconds between updates
+---@param throttle integer seconds between measurements
 ---@param max_width integer histogram width in columns
+---@param samples_per_column integer? measurements aggregated (max) per column
 ---@return string
-M.get_status = function(throttle, max_width)
-  -- e.g. "42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅ 6.2/15.7G" or ""
+M.get_status = function(throttle, max_width, samples_per_column)
+  -- e.g. " 42% ▁▂▄▅▇█▇▅▄▂▁▁▂▃▄▅" or ""
 end
 
 -- plugin/bar/cpu.lua
----@param throttle integer seconds between updates
+---@param throttle integer seconds between measurements
 ---@param max_width integer histogram width in columns
+---@param samples_per_column integer? measurements aggregated (max) per column
 ---@return string
-M.get_status = function(throttle, max_width)
-  -- e.g. "87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█" or ""
+M.get_status = function(throttle, max_width, samples_per_column)
+  -- e.g. " 87% ▇▇▇▅▃▂▁▁▂▃▄▅▆▇█" or ""
 end
 ```
 
@@ -197,6 +196,7 @@ memory = {
   color = 3,
   throttle = 2,
   max_width = 20,
+  samples_per_column = 3,
 },
 cpu = {
   enabled = false,
@@ -204,6 +204,7 @@ cpu = {
   color = 4,
   throttle = 2,
   max_width = 20,
+  samples_per_column = 3,
 },
 ```
 
@@ -260,13 +261,21 @@ Add entries to the `callbacks` table in the `update-status` handler, e.g. before
 {
   name = "memory",
   func = function()
-    return memory.get_status(options.modules.memory.throttle, options.modules.memory.max_width)
+    return memory.get_status(
+      options.modules.memory.throttle,
+      options.modules.memory.max_width,
+      options.modules.memory.samples_per_column
+    )
   end,
 },
 {
   name = "cpu",
   func = function()
-    return cpu.get_status(options.modules.cpu.throttle, options.modules.cpu.max_width)
+    return cpu.get_status(
+      options.modules.cpu.throttle,
+      options.modules.cpu.max_width,
+      options.modules.cpu.samples_per_column
+    )
   end,
 },
 ```
@@ -287,7 +296,7 @@ local is_linux = wez.target_triple:find "linux" ~= nil
 
 ## Performance notes
 
-- Default throttle is `2` seconds for both modules.
+- Default throttle is `2` seconds between measurements, with `samples_per_column = 3` (6-second columns).
 - Linux reads files directly; no subprocesses.
 - macOS CPU spawns a subprocess that blocks for ~1 second. macOS users should set `cpu.throttle` to at least `5` (or disable the module).
 - The histogram uses a fixed 20-character width; no sparklines or history graphs beyond this.

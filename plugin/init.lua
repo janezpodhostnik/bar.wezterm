@@ -47,7 +47,8 @@ local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
 ---this supports forks and file:// plugins, not just the original GitHub URL.
 ---@return string
 local function get_plugin_path()
-  for _, plugin in ipairs(wez.plugin.list()) do
+  local plugins = wez.plugin.list()
+  for _, plugin in ipairs(plugins) do
     local memory_path = plugin.plugin_dir .. separator .. "plugin" .. separator .. "bar" .. separator .. "memory.lua"
     local f = io.open(memory_path, "r")
     if f then
@@ -57,7 +58,7 @@ local function get_plugin_path()
   end
 
   -- fallback: first plugin directory
-  local first = wez.plugin.list()[1]
+  local first = plugins[1]
   if first then
     return first.plugin_dir
   end
@@ -195,13 +196,21 @@ wez.on("update-status", function(window, pane)
     {
       name = "memory",
       func = function()
-        return memory.get_status(options.modules.memory.throttle, options.modules.memory.max_width)
+        return memory.get_status(
+          options.modules.memory.throttle,
+          options.modules.memory.max_width,
+          options.modules.memory.samples_per_column
+        )
       end,
     },
     {
       name = "cpu",
       func = function()
-        return cpu.get_status(options.modules.cpu.throttle, options.modules.cpu.max_width)
+        return cpu.get_status(
+          options.modules.cpu.throttle,
+          options.modules.cpu.max_width,
+          options.modules.cpu.samples_per_column
+        )
       end,
     },
     {

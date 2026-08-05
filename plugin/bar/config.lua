@@ -27,6 +27,7 @@ local M = {}
 ---@class option.histogram : option.module
 ---@field throttle number
 ---@field max_width number
+---@field samples_per_column number
 
 ---@class option.spotify : option.module
 ---@field max_width number
@@ -147,6 +148,7 @@ M.options = {
       color = 3,
       throttle = 2,
       max_width = 20,
+      samples_per_column = 3,
     },
     cpu = {
       enabled = false,
@@ -154,6 +156,7 @@ M.options = {
       color = 4,
       throttle = 2,
       max_width = 20,
+      samples_per_column = 3,
     },
   },
 }

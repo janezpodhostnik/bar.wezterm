@@ -5,9 +5,6 @@ local utilities = require "bar.utilities"
 ---@class bar.cpu
 local M = {}
 
-local last_update = 0
-local cached_text = ""
-local history = {}
 local prev_total = 0
 local prev_idle = 0
 
@@ -59,7 +56,8 @@ end
 
 ---parse macOS iostat output and return the used CPU percentage.
 ---the output may contain disk statistics before the cpu columns, so we locate
----the "id" column in the header and use that index for every data line.
+---the "id" column in the header and use that index for the data lines.
+---the first data line is a since-boot average; the second line is the sample.
 ---@param s string
 ---@return number?
 M._parse_macos_cpu = function(s)
@@ -67,49 +65,28 @@ M._parse_macos_cpu = function(s)
     return nil
   end
 
-  local lines = {}
-  for line in s:gmatch "[^\n]+" do
-    table.insert(lines, line)
-  end
-
   local idle_index = nil
-  for _, line in ipairs(lines) do
+  local seen_first = false
+  for line in s:gmatch "[^\n]+" do
     local fields = {}
     for token in line:gmatch "%S+" do
-      table.insert(fields, token)
+      fields[#fields + 1] = token
     end
-    for i, token in ipairs(fields) do
-      if token == "id" then
-        idle_index = i
-        break
+    if not idle_index then
+      for i, token in ipairs(fields) do
+        if token == "id" then
+          idle_index = i
+          break
+        end
       end
-    end
-    if idle_index then
-      break
-    end
-  end
-
-  if not idle_index then
-    return nil
-  end
-
-  local seen_first = false
-  local header_found = false
-  for _, line in ipairs(lines) do
-    if header_found then
-      local fields = {}
-      for token in line:gmatch "%S+" do
-        table.insert(fields, token)
-      end
-      if #fields >= idle_index and tonumber(fields[idle_index]) then
+    else
+      local idle = tonumber(fields[idle_index] or "")
+      if idle then
         if seen_first then
-          local idle = tonumber(fields[idle_index])
           return math.min(100, math.max(0, 100 - idle))
         end
         seen_first = true
       end
-    elseif line:find("id", 1, true) then
-      header_found = true
     end
   end
 
@@ -119,12 +96,7 @@ end
 ---read current CPU usage percentage
 ---@return number?
 local function get_cpu_usage()
-  if utilities.is_windows then
-    return nil
-  end
-
-  local is_linux = wez.target_triple:find "linux" ~= nil
-  if is_linux then
+  if utilities.is_linux then
     local f, err = io.open("/proc/stat", "r")
     if not f then
       wez.log_error(err)
@@ -153,8 +125,7 @@ local function get_cpu_usage()
     return used_pct
   end
 
-  local is_darwin = wez.target_triple:find "darwin" ~= nil
-  if is_darwin then
+  if utilities.is_darwin then
     local success, stdout, stderr = wez.run_child_process { "iostat", "-c", "2" }
     if not success then
       wez.log_error(stderr)
@@ -170,27 +141,6 @@ end
 ---@param throttle integer
 ---@param max_width integer
 ---@return string
-M.get_status = function(throttle, max_width)
-  if utilities._wait(throttle, last_update) then
-    return cached_text
-  end
-
-  local used_pct = get_cpu_usage()
-  if not used_pct then
-    return cached_text
-  end
-
-  table.insert(history, used_pct)
-  if #history > max_width then
-    table.remove(history, 1)
-  end
-
-  local bar = utilities._render_histogram(history, max_width)
-  local text = string.format("%3d%% %s", math.floor(used_pct + 0.5), bar)
-
-  cached_text = text
-  last_update = os.time()
-  return cached_text
-end
+M.get_status = utilities._make_histogram_status(get_cpu_usage)
 
 return M

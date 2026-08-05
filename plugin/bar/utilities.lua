@@ -10,6 +10,12 @@ H.home = (os.getenv "USERPROFILE" or os.getenv "HOME" or wez.home_dir or ""):gsu
 ---@type boolean
 H.is_windows = package.config:sub(1, 1) == "\\"
 
+---@type boolean
+H.is_linux = wez.target_triple:find "linux" ~= nil
+
+---@type boolean
+H.is_darwin = wez.target_triple:find "darwin" ~= nil
+
 ---waits for a specified throttle time before proceeding.
 ---@param throttle integer
 ---@param last_update integer
@@ -97,24 +103,74 @@ H._block_for_pct = function(pct)
   return blocks[idx]
 end
 
----render a histogram from a history of percentages
+---render a histogram from a history of percentages.
+---current is an optional in-progress column appended after the history;
+---if the result exceeds width, the oldest columns are dropped.
 ---@param history number[]
 ---@param width integer
+---@param current number?
 ---@return string
-H._render_histogram = function(history, width)
+H._render_histogram = function(history, width, current)
   if type(history) ~= "table" or type(width) ~= "number" then
     return ""
   end
 
+  local values = {}
+  for i = math.max(1, #history - width + 1), #history do
+    values[#values + 1] = history[i]
+  end
+  if current then
+    values[#values + 1] = current
+  end
+
   local bar = ""
-  local start = math.max(1, #history - width + 1)
-  for i = start, #history do
-    bar = bar .. H._block_for_pct(history[i])
+  for i = math.max(1, #values - width + 1), #values do
+    bar = bar .. H._block_for_pct(values[i])
   end
   while utf8.len(bar) < width do
     bar = "▁" .. bar
   end
   return bar
+end
+
+---create a throttled status getter that renders a histogram of recent samples.
+---each column aggregates samples_per_column measurements, keeping the maximum
+---so short spikes stay visible. the sampler should return a usage percentage,
+---or nil to keep the cached text.
+---@param sample fun(): number?
+---@return fun(throttle: integer, max_width: integer, samples_per_column: integer?): string
+H._make_histogram_status = function(sample)
+  local last_update = 0
+  local cached_text = ""
+  local history = {}
+  local pending_max = nil
+  local pending_count = 0
+  return function(throttle, max_width, samples_per_column)
+    if H._wait(throttle, last_update) then
+      return cached_text
+    end
+
+    local pct = sample()
+    if not pct then
+      return cached_text
+    end
+
+    samples_per_column = samples_per_column or 1
+    pending_count = pending_count + 1
+    pending_max = math.max(pending_max or pct, pct)
+    if pending_count >= samples_per_column then
+      table.insert(history, pending_max)
+      if #history > max_width then
+        table.remove(history, 1)
+      end
+      pending_max = nil
+      pending_count = 0
+    end
+
+    cached_text = string.format("%3d%% %s", math.floor(pct + 0.5), H._render_histogram(history, max_width, pending_max))
+    last_update = os.time()
+    return cached_text
+  end
 end
 
 return H

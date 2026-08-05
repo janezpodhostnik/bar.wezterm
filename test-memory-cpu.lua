@@ -14,12 +14,9 @@ package.loaded.wezterm = {
   home_dir = "/home/test",
 }
 
--- load real utilities first, then override the functions used by modules
+-- load real utilities; force non-Windows so tests behave the same on macOS
 local utilities = require "plugin.bar.utilities"
 utilities.is_windows = false
-utilities._wait = function(throttle, last_update)
-  return os.time() - last_update < throttle
-end
 
 -- expose utilities so modules use the real helper functions
 package.loaded["bar.utilities"] = utilities
@@ -145,6 +142,19 @@ local iostat_disk = [[
 local cpupct_disk = cpu._parse_macos_cpu(iostat_disk)
 test("macos cpu locates idle column when disk stats are present", math.abs(cpupct_disk - 6) < 0.01)
 
+print "\nutilities._make_histogram_status max aggregation"
+local samples = { 10, 90, 50 }
+local sample_idx = 0
+local status = utilities._make_histogram_status(function()
+  sample_idx = sample_idx + 1
+  return samples[sample_idx]
+end)
+status(0, 5, 2) -- pending: 10
+local full = status(0, 5, 2) -- column: max(10, 90) = 90
+local partial = status(0, 5, 2) -- pending: 50
+test("column keeps the max of its samples", full == " 90% ▁▁▁▁█")
+test("in-progress column renders after history", partial == " 50% ▁▁▁█▄")
+
 print "\nmemory.get_status / cpu.get_status"
 local m1 = memory.get_status(5, 20)
 local m2 = memory.get_status(5, 20)
@@ -155,8 +165,6 @@ test("memory output does not include used/total", not m1:find "G")
 
 local c1 = cpu.get_status(5, 20)
 test("cpu first Linux call returns empty (baseline)", c1 == "")
--- sleep briefly so a second sample has elapsed
-os.execute "sleep 0.1"
 local c2 = cpu.get_status(5, 20)
 test("cpu second call returns non-empty", #c2 > 0)
 test("cpu output is fixed width (25 chars)", utf8.len(c2) == 25)
