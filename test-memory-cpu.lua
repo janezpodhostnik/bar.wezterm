@@ -169,6 +169,52 @@ local c2 = cpu.get_status(5, 20)
 test("cpu second call returns non-empty", #c2 > 0)
 test("cpu output is fixed width (25 chars)", utf8.len(c2) == 25)
 
+print "\nspotify.get_currently_playing"
+local spotify = require "plugin.bar.spotify"
+local spt_output = "Bench Artist - Bench Track\n"
+package.loaded.wezterm.background_child_process = function(argv)
+  -- simulate the background command completing instantly: write the fake
+  -- spt output to the redirect target
+  local cmdline = argv[#argv]
+  local path = type(cmdline) == "string" and cmdline:match "> '([^']+)'" or nil
+  if path then
+    local f = io.open(path, "w")
+    if f then
+      f:write(spt_output)
+      f:close()
+    end
+  end
+end
+
+local real_time = os.time
+local fake_now = 1700000000
+os.time = function()
+  return fake_now
+end
+
+local s1 = spotify.get_currently_playing(64, 15)
+test("spotify returns trimmed playback", s1 == "Bench Artist - Bench Track")
+spt_output = "Changed - Song\n"
+local s1_again = spotify.get_currently_playing(64, 15)
+test("spotify returns cached value within throttle", s1_again == "Bench Artist - Bench Track")
+
+fake_now = fake_now + 20
+spt_output = string.rep("a", 100) .. "\n" -- no " - " separator
+local s2 = spotify.get_currently_playing(30, 15)
+test("spotify trims playback without artist separator", s2 == string.rep("a", 30))
+
+fake_now = fake_now + 20
+spt_output = "Very Long Artist Name, Second Artist - Very Long Track Name Here\n"
+local s3 = spotify.get_currently_playing(30, 15)
+test("spotify falls back to trimmed track name", s3 == "Very Long Track Name Here")
+
+fake_now = fake_now + 20
+spt_output = "Long Artist, Collaborator - Song\n"
+local s4 = spotify.get_currently_playing(25, 15)
+test("spotify keeps only the main artist when it fits", s4 == "Long Artist - Song")
+
+os.time = real_time
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then
   os.exit(1)
